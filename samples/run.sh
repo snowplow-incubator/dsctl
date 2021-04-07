@@ -1,6 +1,6 @@
 # Sample script to take a data structure from validation to production
-# For the following to work, a .env file needs to be present on the same location,
-# setting all the environment variables that the script expects to resolve
+# For the following to work, environment variables must be set as discussed
+# in README.md.
 
 check_status() {
   status=$?

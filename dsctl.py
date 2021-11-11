@@ -50,11 +50,11 @@ class Deployment:
 def get_token():
     data = {
         "grant_type": "password",
-        "username": os.environ["INSIGHTS_USERNAME"],
-        "password": os.environ["INSIGHTS_PASSWORD"],
+        "username": os.environ["BDP_USERNAME"],
+        "password": os.environ["BDP_PASSWORD"],
         "audience": "https://snowplowanalytics.com/api/",
-        "client_id": os.environ["INSIGHTS_CLIENT_ID"],
-        "client_secret": os.environ["INSIGHTS_CLIENT_SECRET"]
+        "client_id": os.environ["BDP_CLIENT_ID"],
+        "client_secret": os.environ["BDP_CLIENT_SECRET"]
     }
 
     try:

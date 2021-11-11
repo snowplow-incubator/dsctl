@@ -3,7 +3,7 @@ _*** This is an early release and, although it should work as expected, there ma
 # Data Structures Control
 
 _Data Structures Control_, or `dsctl` for short, is a client to the 
-Snowplow Insights Data Structures API. This API can be used by Snowplow
+Snowplow BDP Data Structures API. This API can be used by Snowplow
 Analytics customers as elaborated in 
 [the respective documentation](https://docs.snowplowanalytics.com/docs/understanding-tracking-design/managing-data-structures-via-the-api/).
 In particular, it is worth reading the paragraph about
@@ -46,8 +46,8 @@ By default, when given no arguments, the script will validate its input.
 The following non-optional environment variables must be set:
 
 - `CONSOLE_ORGANIZATION_ID` -- the organization ID as it can be found in
-  Insights Console
-- `INSIGHTS_USERNAME` -- the username for the bot user of the organization
-- `INSIGHTS_PASSWORD` -- the respective password
-- `INSIGHTS_CLIENT_ID` -- the client ID as generated via [Insights admin pages](https://console.snowplowanalytics.com/credentials)
-- `INSIGHTS_CLIENT_SECRET` -- the respective secret.
+  BDP Console
+- `BDP_USERNAME` -- the username for the bot user of the organization
+- `BDP_PASSWORD` -- the respective password
+- `BDP_CLIENT_ID` -- the client ID as generated via [BDP admin pages](https://console.snowplowanalytics.com/credentials)
+- `BDP_CLIENT_SECRET` -- the respective secret.

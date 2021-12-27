@@ -5,10 +5,8 @@ _*** This is an early release and, although it should work as expected, there ma
 _Data Structures Control_, or `dsctl` for short, is a client to the 
 Snowplow BDP Data Structures API. This API can be used by Snowplow
 Analytics customers as elaborated in 
-[the respective documentation](https://docs.snowplowanalytics.com/docs/understanding-tracking-design/managing-data-structures-via-the-api/).
-In particular, it is worth reading the paragraph about
-[authentication](https://docs.snowplowanalytics.com/docs/understanding-tracking-design/managing-data-structures-via-the-api/#authorization)
-to become familiar with the creation of necessary credentials.
+[the respective documentation](https://docs.snowplowanalytics.com/docs/understanding-tracking-design/managing-data-structures-via-the-api-2/).
+To invoke the API, one needs to [authenticate with a JSON web token](https://docs.snowplowanalytics.com/docs/using-the-snowplow-console/managing-console-api-authentication/).
 
 The `dsctl` script has been built with CI/CD
 pipelines in mind, for example a git-flow like workflow where schemas
@@ -45,9 +43,5 @@ By default, when given no arguments, the script will validate its input.
 
 The following non-optional environment variables must be set:
 
-- `CONSOLE_ORGANIZATION_ID` -- the organization ID as it can be found in
-  BDP Console
-- `BDP_USERNAME` -- the username for the bot user of the organization
-- `BDP_PASSWORD` -- the respective password
-- `BDP_CLIENT_ID` -- the client ID as generated via [BDP admin pages](https://console.snowplowanalytics.com/credentials)
-- `BDP_CLIENT_SECRET` -- the respective secret.
+- `CONSOLE_ORGANIZATION_ID` -- the organization ID as it can be found in BDP Console
+- `CONSOLE_API_KEY` -- the API key generated via the [BDP Console UI](https://console.snowplowanalytics.com/credentials)

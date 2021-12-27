@@ -21,10 +21,20 @@ import sys
 import argparse
 
 from dotenv import load_dotenv
-from requests import post, RequestException
+from requests import get, post, RequestException
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+dotenv_path = join(dirname(__file__), '.env')
+load_dotenv(dotenv_path)
+
+CONSOLE_HOST = os.environ.get('CONSOLE_HOST', 'console')
+CONSOLE_ORGANIZATION_ID = os.environ['CONSOLE_ORGANIZATION_ID']
+CONSOLE_API_KEY = os.environ['CONSOLE_API_KEY']
+
+BASE_URL = f"https://{CONSOLE_HOST}.snowplowanalytics.com/api/msc/v1/organizations/{CONSOLE_ORGANIZATION_ID}"
+DS_URL = f"{BASE_URL}/data-structures/v1"
 
 
 @dataclass
@@ -48,41 +58,25 @@ class Deployment:
 
 
 def get_token():
-    data = {
-        "grant_type": "password",
-        "username": os.environ["BDP_USERNAME"],
-        "password": os.environ["BDP_PASSWORD"],
-        "audience": "https://snowplowanalytics.com/api/",
-        "client_id": os.environ["BDP_CLIENT_ID"],
-        "client_secret": os.environ["BDP_CLIENT_SECRET"]
-    }
-
     try:
-        return post(
-            "https://id.snowplowanalytics.com/oauth/token",
-            json=data,
-            headers={"Content-Type": "application/json"}
-        ).json()["access_token"]
+        return get(
+            f"{BASE_URL}/credentials/v2/token",
+            headers={"X-API-Key": CONSOLE_API_KEY}
+        ).json()["accessToken"]
     except RequestException as e:
-        logger.error("Could not contact authentication provider: {}".format(e))
+        logger.error("Could not contact BDP Console: {}".format(e))
         sys.exit(1)
     except JSONDecodeError:
-        logger.error("Authentication provider did not return JSON content")
+        logger.error("BDP Console did not return JSON content")
         sys.exit(1)
     except KeyError:
-        logger.error("Authentication provider did not return an access token")
+        logger.error("BDP Console did not return an access token")
         sys.exit(1)
-
-
-def get_base_path():
-    return "https://console.snowplowanalytics.com/api/schemas/v1/organizations/{}".format(
-        os.environ['CONSOLE_ORGANIZATION_ID']
-    )
 
 
 def get_base_headers(token):
     return {
-        "Authorization": "Bearer {}".format(token)
+        "Authorization": f"Bearer {token}"
     }
 
 
@@ -103,7 +97,7 @@ def validate(schema, token, stype, contains_meta):
         sys.exit(1)
 
     response = post(
-        "{}/validation-requests/sync".format(get_base_path()),
+        f"{DS_URL}/validation-requests",
         json={
             "meta": {
                 "hidden": False,
@@ -120,7 +114,7 @@ def validate(schema, token, stype, contains_meta):
 
 def promote(spec, token, message, prod=False):
     response = post(
-        "{}/deployment-requests/sync".format(get_base_path()),
+        f"{DS_URL}/deployment-requests",
         json={
             "name": spec.data_structure.name,
             "vendor": spec.data_structure.vendor,
@@ -155,9 +149,6 @@ def resolve(schema, includes_meta):
 
 
 if __name__ == "__main__":
-    dotenv_path = join(dirname(__file__), '.env')
-    load_dotenv(dotenv_path)
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--token-only", action="store_true", help="only get an access token and print it on stdout")
     parser.add_argument("--token", type=str, help="use this token to authenticate")

@@ -30,12 +30,14 @@ logger.setLevel(logging.INFO)
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
-CONSOLE_HOST = os.environ.get('CONSOLE_HOST', 'console')
-CONSOLE_ORGANIZATION_ID = os.environ['CONSOLE_ORGANIZATION_ID']
-CONSOLE_API_KEY = os.environ['CONSOLE_API_KEY']
 
-BASE_URL = f"https://{CONSOLE_HOST}.snowplowanalytics.com/api/msc/v1/organizations/{CONSOLE_ORGANIZATION_ID}"
-DS_URL = f"{BASE_URL}/data-structures/v1"
+@dataclass
+class Config:
+    console_host: str
+    organization_id: str
+    api_key: str
+    base_url: str
+    ds_url: str
 
 
 @dataclass
@@ -63,7 +65,29 @@ class SchemaType(str, Enum):
     ENTITY = 'entity'
 
 
-def get_token() -> Optional[str]:
+def get_config() -> Optional[Config]:
+    """Returns an endpoint configuration object"""
+
+    try:
+        org_id = os.environ['CONSOLE_ORGANIZATION_ID']
+        api_key = os.environ['CONSOLE_API_KEY']
+    except KeyError:
+        logger.error("Environment variables CONSOLE_ORGANIZATION_ID and/or CONSOLE_API_KEY are not set")
+        return
+
+    host = os.environ.get('CONSOLE_HOST', 'console')
+    base_url = f"https://{host}.snowplowanalytics.com/api/msc/v1/organizations/{org_id}"
+
+    return Config(
+        console_host=host,
+        organization_id=org_id,
+        api_key=api_key,
+        base_url=base_url,
+        ds_url=f"{base_url}/data-structures/v1"
+    )
+
+
+def get_token(config: Config) -> Optional[str]:
     """
     Retrieves a JWT from BDP Console.
 
@@ -71,8 +95,8 @@ def get_token() -> Optional[str]:
     """
     try:
         response = get(
-            f"{BASE_URL}/credentials/v2/token",
-            headers={"X-API-Key": CONSOLE_API_KEY}
+            f"{config.base_url}/credentials/v2/token",
+            headers={"X-API-Key": config.api_key}
         )
         body = response.json()
         return body["accessToken"]
@@ -116,10 +140,11 @@ def handle_response(response: Response, action: str) -> bool:
         return False
 
 
-def validate(data_structure: dict, auth_token: str, stype: str, contains_meta: bool) -> bool:
+def validate(config: Config, data_structure: dict, auth_token: str, stype: str, contains_meta: bool) -> bool:
     """
     Validates a data structure against the BDP API.
 
+    :param config: Endpoint configuration object
     :param data_structure: A dictionary representing the data structure
     :param auth_token: The JWT to use
     :param stype: The type of the data structure (event or entity)
@@ -132,7 +157,7 @@ def validate(data_structure: dict, auth_token: str, stype: str, contains_meta: b
 
     try:
         response = post(
-            f"{DS_URL}/validation-requests",
+            f"{config.ds_url}/validation-requests",
             json={
                 "meta": {
                     "hidden": False,
@@ -150,10 +175,11 @@ def validate(data_structure: dict, auth_token: str, stype: str, contains_meta: b
     return handle_response(response, 'validation')
 
 
-def promote(deployment: Deployment, auth_token, deployment_message: str, to_production=False) -> bool:
+def promote(config: Config, deployment: Deployment, auth_token, deployment_message: str, to_production=False) -> bool:
     """
     Promotes a data structure to staging or production.
 
+    :param config: Endpoint configuration object
     :param deployment: The Deployment class to use
     :param auth_token: The JWT to use
     :param deployment_message: A message describing the changes applied to the data structure
@@ -162,7 +188,7 @@ def promote(deployment: Deployment, auth_token, deployment_message: str, to_prod
     """
     try:
         response = post(
-            f"{DS_URL}/deployment-requests",
+            f"{config.ds_url}/deployment-requests",
             json={
                 "name": deployment.data_structure.name,
                 "vendor": deployment.data_structure.vendor,
@@ -243,11 +269,11 @@ def parse_input_file(filename: Optional[str]) -> Optional[dict]:
         logger.error(f"Could not read {filename if filename else 'stdin'}: {e}")
 
 
-def flow(args: argparse.Namespace) -> bool:
+def flow(args: argparse.Namespace, config: Config) -> bool:
     """Main operation actually invoking the DS API to validate or promote a data structure"""
 
     message = args.message if args.message else "No message provided"
-    token = args.token if args.token else get_token()
+    token = args.token if args.token else get_token(config)
     schema = parse_input_file(args.file)
     schema_type = args.type or "event"
     spec = resolve(schema, args.includes_meta)
@@ -256,21 +282,25 @@ def flow(args: argparse.Namespace) -> bool:
         return False
 
     if args.promote_to_dev or args.promote_to_prod:
-        return promote(spec, token, message, to_production=True if args.promote_to_prod else False)
+        return promote(config, spec, token, message, to_production=True if args.promote_to_prod else False)
     else:
-        return validate(schema, token, schema_type, args.includes_meta)
+        return validate(config, schema, token, schema_type, args.includes_meta)
 
 
 if __name__ == "__main__":
     arguments = parse_arguments()
+    config = get_config()
+
+    if not config:
+        sys.exit(1)
 
     if arguments.token_only:
-        token = get_token()
+        token = get_token(config)
         if not token:
             sys.exit(1)
         sys.stdout.write(token)
     else:
-        if not flow(arguments):
+        if not flow(arguments, config):
             sys.exit(1)
 
     sys.exit(0)

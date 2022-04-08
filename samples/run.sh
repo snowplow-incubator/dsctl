@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Sample script to take a data structure from validation to production
 # For the following to work, environment variables must be set as discussed
 # in README.md.

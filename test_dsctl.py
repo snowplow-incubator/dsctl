@@ -1,8 +1,9 @@
+import argparse
 import io
 import os
 import sys
 from copy import deepcopy
-from json import JSONDecodeError
+from json import JSONDecodeError, dumps
 
 import pytest
 import responses
@@ -76,6 +77,19 @@ def deployment(data_structure):
             *data_structure['self']['version'].split('-')
         )
     )
+
+
+@pytest.fixture
+def args(mocker, data_structure):
+    args = mocker.Mock()
+    mocker.patch.object(args, 'message', None)
+    mocker.patch.object(args, 'token', None)
+    mocker.patch.object(args, 'file', None)
+    mocker.patch.object(sys, 'stdin', io.StringIO(dumps(data_structure)))
+    mocker.patch.object(args, 'type', None)
+    mocker.patch.object(args, 'includes_meta', False)
+
+    return args
 
 
 def test_config_no_env():
@@ -213,7 +227,7 @@ def test_promote_sends_the_right_body_validated_dev(config, deployment):
 
 
 @responses.activate
-def test_promote_sends_the_right_body_validated_prod(config):
+def test_promote_sends_the_right_body_validated_prod(config, deployment):
     responses.add(
         responses.POST,
         f"{config.ds_url}/deployment-requests",
@@ -275,3 +289,64 @@ def test_filename_parsing(mocker):
 
     mocker.patch.object(sys, 'stdin', io.StringIO('{"a": 1}'))
     assert dsctl.parse_input_file(None) == {"a": 1}
+
+
+@responses.activate
+def test_main_flow_validate(mocker, args, config, token_url, data_structure, data_structure_with_meta):
+    mocker.patch.object(args, 'promote_to_dev', False)
+    mocker.patch.object(args, 'promote_to_prod', False)
+    responses.add(responses.GET, token_url, json={"accessToken": "abcd"}, status=200)
+    responses.add(
+        responses.POST,
+        f"{config.ds_url}/validation-requests",
+        status=200,
+        json={"success": True},
+        match=[matchers.json_params_matcher(data_structure_with_meta)]
+    )
+    assert dsctl.flow(args, config) is True
+
+
+@responses.activate
+def test_main_flow_promote_to_dev(mocker, args, config, token_url, deployment):
+    mocker.patch.object(args, 'promote_to_dev', True)
+    mocker.patch.object(args, 'promote_to_prod', False)
+    responses.add(responses.GET, token_url, json={"accessToken": "abcd"}, status=200)
+    responses.add(
+        responses.POST,
+        f"{config.ds_url}/deployment-requests",
+        status=200,
+        json={"success": True},
+        match=[matchers.json_params_matcher({
+            "name": deployment.data_structure.name,
+            "vendor": deployment.data_structure.vendor,
+            "format": deployment.data_structure.format,
+            "version": str(deployment.version),
+            "source": "VALIDATED",
+            "target": "DEV",
+            "message": "No message provided"
+        })]
+    )
+    assert dsctl.flow(args, config) is True
+
+
+@responses.activate
+def test_main_flow_promote_to_prod(mocker, args, config, token_url, deployment):
+    mocker.patch.object(args, 'promote_to_dev', False)
+    mocker.patch.object(args, 'promote_to_prod', True)
+    responses.add(responses.GET, token_url, json={"accessToken": "abcd"}, status=200)
+    responses.add(
+        responses.POST,
+        f"{config.ds_url}/deployment-requests",
+        status=200,
+        json={"success": True},
+        match=[matchers.json_params_matcher({
+            "name": deployment.data_structure.name,
+            "vendor": deployment.data_structure.vendor,
+            "format": deployment.data_structure.format,
+            "version": str(deployment.version),
+            "source": "DEV",
+            "target": "PROD",
+            "message": "No message provided"
+        })]
+    )
+    assert dsctl.flow(args, config) is True

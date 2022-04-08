@@ -13,13 +13,13 @@
 
 import os
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 from json import JSONDecodeError, dumps, load
 from os.path import join, dirname
 import logging
 import sys
 import argparse
-from typing import Dict
+from typing import Dict, Optional
 
 from dotenv import load_dotenv
 from requests import get, post, RequestException, Response
@@ -58,12 +58,12 @@ class Deployment:
     version: Version
 
 
-class SchemaType(StrEnum):
+class SchemaType(str, Enum):
     EVENT = 'event'
     ENTITY = 'entity'
 
 
-def get_token() -> str:
+def get_token() -> Optional[str]:
     """
     Retrieves a JWT from BDP Console.
 
@@ -78,13 +78,10 @@ def get_token() -> str:
         return body["accessToken"]
     except RequestException as e:
         logger.error(f"Could not contact BDP Console: {e}")
-        sys.exit(1)
     except JSONDecodeError:
         logger.error(f"get_token: Response was not valid JSON: {response.text}")
-        sys.exit(1)
     except KeyError:
         logger.error(f"get_token: Invalid response body: {dumps(body, indent=2)}")
-        sys.exit(1)
 
 
 def get_base_headers(auth_token: str) -> Dict[str, str]:
@@ -93,7 +90,7 @@ def get_base_headers(auth_token: str) -> Dict[str, str]:
     }
 
 
-def handle_response(response: Response, action: str) -> None:
+def handle_response(response: Response, action: str) -> bool:
     """
     Generic response handler for validation and promotion operations. Confirms that it all went well.
 
@@ -106,19 +103,20 @@ def handle_response(response: Response, action: str) -> None:
             body = response.json()
             if not body['success']:
                 logger.error(f"Data structure {action} failed: {body['errors']}")
-                sys.exit(1)
+                return False
+            return True
         except JSONDecodeError:
             logger.error(f"handle_response: Response was not valid JSON: {response.text}")
-            sys.exit(1)
+            return False
         except KeyError:
             logger.error(f"handle_response: Invalid response body: {dumps(body, indent=2)}")
-            sys.exit(1)
+            return False
     else:
         logger.error("Data structure {} failed: {}".format(action, response.text))
-        sys.exit(1)
+        return False
 
 
-def validate(data_structure: dict, auth_token: str, stype: str, contains_meta: bool) -> None:
+def validate(data_structure: dict, auth_token: str, stype: str, contains_meta: bool) -> bool:
     """
     Validates a data structure against the BDP API.
 
@@ -130,7 +128,7 @@ def validate(data_structure: dict, auth_token: str, stype: str, contains_meta: b
     """
     if stype not in (SchemaType.EVENT, SchemaType.ENTITY):
         logger.error('Data structure type must be either "event" or "entity"')
-        sys.exit(1)
+        return False
 
     try:
         response = post(
@@ -147,12 +145,12 @@ def validate(data_structure: dict, auth_token: str, stype: str, contains_meta: b
         )
     except RequestException as e:
         logger.error(f"Could not contact BDP Console: {e}")
-        sys.exit(1)
+        return False
 
-    handle_response(response, 'validation')
+    return handle_response(response, 'validation')
 
 
-def promote(deployment: Deployment, auth_token, deployment_message: str, to_production=False) -> None:
+def promote(deployment: Deployment, auth_token, deployment_message: str, to_production=False) -> bool:
     """
     Promotes a data structure to staging or production.
 
@@ -179,12 +177,12 @@ def promote(deployment: Deployment, auth_token, deployment_message: str, to_prod
         )
     except RequestException as e:
         logger.error(f"Could not contact BDP Console: {e}")
-        sys.exit(1)
+        return False
 
-    handle_response(response, 'promotion')
+    return handle_response(response, 'promotion')
 
 
-def resolve(data_structure: dict, includes_meta: bool) -> Deployment:
+def resolve(data_structure: dict, includes_meta: bool) -> Optional[Deployment]:
     """
     Reads a data structure and extracts the self-describing section.
 
@@ -203,13 +201,13 @@ def resolve(data_structure: dict, includes_meta: bool) -> Deployment:
         return Deployment(ds, v)
     except ValueError:
         logger.error("Data structure spec is incorrect: Vendor, name, format or version is invalid")
-        sys.exit(1)
     except KeyError:
         logger.error("Data structure does not include a correct 'self' element")
-        sys.exit(1)
 
 
-if __name__ == "__main__":
+def parse_arguments() -> argparse.Namespace:
+    """Parses and returns CLI parameters"""
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--token-only", action="store_true", help="only get an access token and print it on stdout")
     parser.add_argument("--token", type=str, help="use this token to authenticate")
@@ -222,28 +220,57 @@ if __name__ == "__main__":
     parser.add_argument("--promote-to-prod", action="store_true",
                         help="promote from dev to prod; reads parameters from stdin or --file parameter")
     parser.add_argument("--message", type=str, help="message to add to version deployment")
-    args = parser.parse_args()
 
-    if args.token_only:
-        sys.stdout.write(get_token())
+    return parser.parse_args()
+
+
+def parse_input_file(filename: Optional[str]) -> Optional[dict]:
+    """
+    Loads schema from a file or standard input.
+
+    :param filename: Optional file to read from; if None then use stdin
+    :return: The schema JSON
+    """
+    try:
+        if filename:
+            with open(filename) as f:
+                return load(f)
+        else:
+            return load(sys.stdin)
+    except JSONDecodeError as e:
+        logger.error(f"Provided input is not valid JSON: {e}")
+    except Exception as e:
+        logger.error(f"Could not read {filename if filename else 'stdin'}: {e}")
+
+
+def flow(args: argparse.Namespace) -> bool:
+    """Main operation actually invoking the DS API to validate or promote a data structure"""
+
+    message = args.message if args.message else "No message provided"
+    token = args.token if args.token else get_token()
+    schema = parse_input_file(args.file)
+    schema_type = args.type or "event"
+    spec = resolve(schema, args.includes_meta)
+
+    if not token or not schema or not spec:
+        return False
+
+    if args.promote_to_dev or args.promote_to_prod:
+        return promote(spec, token, message, to_production=True if args.promote_to_prod else False)
     else:
-        token = args.token if args.token else get_token()
-        message = args.message if args.message else "No message provided"
+        return validate(schema, token, schema_type, args.includes_meta)
 
-        if args.file:
-            with open(args.file) as f:
-                schema = load(f)
-        else:
-            schema = load(sys.stdin)
 
-        if args.promote_to_dev:
-            spec = resolve(schema, args.includes_meta)
-            promote(spec, token, message)
-        elif args.promote_to_prod:
-            spec = resolve(schema, args.includes_meta)
-            promote(spec, token, message, to_production=True)
-        else:
-            schemaType = args.type or "event"
-            validate(schema, token, schemaType, args.includes_meta)
+if __name__ == "__main__":
+    arguments = parse_arguments()
+
+    if arguments.token_only:
+        token = get_token()
+        if not token:
+            sys.exit(1)
+        sys.stdout.write(token)
+    else:
+        if not flow(arguments):
+            sys.exit(1)
 
     sys.exit(0)

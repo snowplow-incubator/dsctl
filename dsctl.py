@@ -53,6 +53,9 @@ class Version:
     revision: int
     addition: int
 
+    def __str__(self):
+        return f"{self.model}-{self.revision}-{self.addition}"
+
 
 @dataclass
 class Deployment:
@@ -225,7 +228,7 @@ def resolve(data_structure: dict, includes_meta: bool) -> Optional[Deployment]:
         ds = DataStructure(vendor, name, ds_format)
         v = Version(*version.split('-'))
         return Deployment(ds, v)
-    except ValueError:
+    except (ValueError, TypeError):
         logger.error("Data structure spec is incorrect: Vendor, name, format or version is invalid")
     except KeyError:
         logger.error("Data structure does not include a correct 'self' element")

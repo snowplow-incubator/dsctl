@@ -1,5 +1,3 @@
-_*** This is an early release and, although it should work as expected, there may be rough edges. Reach out to your friendly Snowplow Customer Success Manager if you have questions or need help and we'll be glad to assist you. ***_ 
-
 # Data Structures Control
 
 _Data Structures Control_, or `dsctl` for short, is a client to the 

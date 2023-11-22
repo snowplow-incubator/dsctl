@@ -19,7 +19,7 @@ from os.path import join, dirname
 import logging
 import sys
 import argparse
-from typing import Dict, Optional
+from typing import Dict, Literal, Optional, TextIO
 
 from dotenv import load_dotenv
 from requests import get, post, RequestException, Response
@@ -29,6 +29,18 @@ logger.setLevel(logging.INFO)
 
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
+
+
+class CLIArguments(argparse.Namespace):
+    token_only: bool
+    token: str | None
+    file: TextIO
+    type: Literal["event", "entity"]
+    includes_meta: bool
+    promote_to_dev: bool
+    promote_to_prod: bool
+    allow_patch: bool
+    message: str | None
 
 
 @dataclass
@@ -96,6 +108,8 @@ def get_token(config: Config) -> Optional[str]:
 
     :return: The token
     """
+    response = None
+    body = None
     try:
         response = get(
             f"{config.base_url}/credentials/v2/token",
@@ -106,7 +120,7 @@ def get_token(config: Config) -> Optional[str]:
     except RequestException as e:
         logger.error(f"Could not contact BDP Console: {e}")
     except JSONDecodeError:
-        logger.error(f"get_token: Response was not valid JSON: {response.text}")
+        logger.error(f"get_token: Response was not valid JSON: {response and response.text}")
     except KeyError:
         logger.error(f"get_token: Invalid response body: {dumps(body, indent=2)}")
 
@@ -128,18 +142,15 @@ def handle_response(response: Response, action: str) -> bool:
     if response.ok:
         try:
             body = response.json()
-            if not body['success']:
-                logger.error(f"Data structure {action} failed: {body['errors']}")
+            if not isinstance(body, dict) or not body.get("success"):
+                logger.error(f"Data structure {action} failed: {body}")
                 return False
             return True
         except JSONDecodeError:
             logger.error(f"handle_response: Response was not valid JSON: {response.text}")
             return False
-        except KeyError:
-            logger.error(f"handle_response: Invalid response body: {dumps(body, indent=2)}")
-            return False
     else:
-        logger.error("Data structure {} failed: {}".format(action, response.text))
+        logger.error(f"Data structure {action} failed: {response.text}")
         return False
 
 
@@ -211,7 +222,7 @@ def promote(config: Config, deployment: Deployment, auth_token, deployment_messa
     return handle_response(response, 'promotion')
 
 
-def resolve(data_structure: dict, includes_meta: bool) -> Optional[Deployment]:
+def resolve(data_structure: dict | None, includes_meta: bool) -> Optional[Deployment]:
     """
     Reads a data structure and extracts the self-describing section.
 
@@ -220,7 +231,13 @@ def resolve(data_structure: dict, includes_meta: bool) -> Optional[Deployment]:
     :return: A Deployment instance
     """
     try:
-        _self = data_structure['self'] if not includes_meta else data_structure['data']['self']
+        if not isinstance(data_structure, dict):
+            raise TypeError()
+        _self = (
+            data_structure["self"]
+            if not includes_meta
+            else data_structure["data"]["self"]
+        )
         vendor = _self['vendor']
         name = _self['name']
         ds_format = _self['format']
@@ -234,14 +251,21 @@ def resolve(data_structure: dict, includes_meta: bool) -> Optional[Deployment]:
         logger.error("Data structure does not include a correct 'self' element")
 
 
-def parse_arguments() -> argparse.Namespace:
+def parse_arguments() -> CLIArguments:
     """Parses and returns CLI parameters"""
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--token-only", action="store_true", help="only get an access token and print it on stdout")
     parser.add_argument("--token", type=str, help="use this token to authenticate")
-    parser.add_argument("--file", type=str, help="read data structure from file (absolute path) instead of stdin")
-    parser.add_argument("--type", choices=('event', 'entity'), help="document type")
+    parser.add_argument(
+        "--file",
+        type=argparse.FileType(),
+        default="-",
+        help="read data structure from file (absolute path) instead of stdin",
+    )
+    parser.add_argument(
+        "--type", choices=("event", "entity"), default="event", help="document type"
+    )
     parser.add_argument("--includes-meta", action="store_true",
                         help="the input document already contains the meta field")
     parser.add_argument("--promote-to-dev", action="store_true",
@@ -250,35 +274,33 @@ def parse_arguments() -> argparse.Namespace:
                         help="promote from dev to prod; reads parameters from stdin or --file parameter")
     parser.add_argument("--message", type=str, help="message to add to version deployment")
 
-    return parser.parse_args()
+    return parser.parse_args(namespace=CLIArguments())
 
 
-def parse_input_file(filename: Optional[str]) -> Optional[dict]:
+def parse_input_file(file: TextIO) -> Optional[dict]:
     """
     Loads schema from a file or standard input.
 
-    :param filename: Optional file to read from; if None then use stdin
+    :param file: File to read from
     :return: The schema JSON
     """
     try:
-        if filename:
-            with open(filename) as f:
-                return load(f)
-        else:
-            return load(sys.stdin)
+        return load(file)
     except JSONDecodeError as e:
         logger.error(f"Provided input is not valid JSON: {e}")
     except Exception as e:
-        logger.error(f"Could not read {filename if filename else 'stdin'}: {e}")
+        logger.error(f"Could not read {file.name if file.name else 'stdin'}: {e}")
+    finally:
+        file.close()
 
 
-def flow(args: argparse.Namespace, config: Config) -> bool:
+def flow(args: CLIArguments, config: Config) -> bool:
     """Main operation actually invoking the DS API to validate or promote a data structure"""
 
     message = args.message if args.message else "No message provided"
     token = args.token if args.token else get_token(config)
     schema = parse_input_file(args.file)
-    schema_type = args.type or "event"
+    schema_type = args.type
     spec = resolve(schema, args.includes_meta)
 
     if not token or not schema or not spec:

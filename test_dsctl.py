@@ -84,8 +84,7 @@ def args(mocker, data_structure):
     args = mocker.Mock()
     mocker.patch.object(args, 'message', None)
     mocker.patch.object(args, 'token', None)
-    mocker.patch.object(args, 'file', None)
-    mocker.patch.object(sys, 'stdin', io.StringIO(dumps(data_structure)))
+    mocker.patch.object(args, 'file', io.StringIO(dumps(data_structure)))
     mocker.patch.object(args, 'type', None)
     mocker.patch.object(args, 'includes_meta', False)
 
@@ -281,20 +280,11 @@ def test_resolve_resolves_correctly(data_structure, data_structure_with_meta, de
     assert dsctl.resolve(d, False) is None
 
 
-def test_filename_parsing(mocker):
-    with open("f", "w") as f:
-        f.write("{}")
-    assert dsctl.parse_input_file("f") == {}
-    os.remove("f")
-
-    mocker.patch.object(sys, 'stdin', io.StringIO('{"a": 1}'))
-    assert dsctl.parse_input_file(None) == {"a": 1}
-
-
 @responses.activate
 def test_main_flow_validate(mocker, args, config, token_url, data_structure, data_structure_with_meta):
     mocker.patch.object(args, 'promote_to_dev', False)
     mocker.patch.object(args, 'promote_to_prod', False)
+    mocker.patch.object(args, 'type', 'event')
     responses.add(responses.GET, token_url, json={"accessToken": "abcd"}, status=200)
     responses.add(
         responses.POST,

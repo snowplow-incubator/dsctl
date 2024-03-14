@@ -178,7 +178,14 @@ def validate(config: Config, data_structure: dict, auth_token: str, stype: str, 
     return handle_response(response, 'validation')
 
 
-def promote(config: Config, deployment: Deployment, auth_token, deployment_message: str, to_production=False) -> bool:
+def promote(
+    config: Config,
+    deployment: Deployment,
+    auth_token,
+    deployment_message: str,
+    to_production=False,
+    request_patch=False,
+) -> bool:
     """
     Promotes a data structure to staging or production.
 
@@ -187,6 +194,7 @@ def promote(config: Config, deployment: Deployment, auth_token, deployment_messa
     :param auth_token: The JWT to use
     :param deployment_message: A message describing the changes applied to the data structure
     :param to_production: A flag to indicate if the data structure should be deployed to production (default: staging)
+    :param request_patch: A flag to indicate if the data structure deployment should request patch support (default: False)
     :return: None
     """
     try:
@@ -202,7 +210,8 @@ def promote(config: Config, deployment: Deployment, auth_token, deployment_messa
                 "target": "DEV" if not to_production else "PROD",
                 "message": deployment_message
             },
-            headers=get_base_headers(auth_token)
+            params=dict(patch=request_patch),
+            headers=get_base_headers(auth_token),
         )
     except RequestException as e:
         logger.error(f"Could not contact BDP Console: {e}")
@@ -248,6 +257,11 @@ def parse_arguments() -> argparse.Namespace:
                         help="promote from validated to dev; reads parameters from stdin or --file parameter")
     parser.add_argument("--promote-to-prod", action="store_true",
                         help="promote from dev to prod; reads parameters from stdin or --file parameter")
+    parser.add_argument(
+        "--allow-patch",
+        action="store_true",
+        help="request patch support in promotion request",
+    )
     parser.add_argument("--message", type=str, help="message to add to version deployment")
 
     return parser.parse_args()
@@ -285,7 +299,14 @@ def flow(args: argparse.Namespace, config: Config) -> bool:
         return False
 
     if args.promote_to_dev or args.promote_to_prod:
-        return promote(config, spec, token, message, to_production=True if args.promote_to_prod else False)
+        return promote(
+            config,
+            spec,
+            token,
+            message,
+            to_production=args.promote_to_prod,
+            request_patch=args.allow_patch,
+        )
     else:
         return validate(config, schema, token, schema_type, args.includes_meta)
 

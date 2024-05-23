@@ -332,8 +332,7 @@ def flow(args: CLIArguments, config: Config) -> bool:
     else:
         return validate(config, schema, token, schema_type, args.includes_meta)
 
-
-if __name__ == "__main__":
+def main():
     arguments = parse_arguments()
     config = get_config()
 
@@ -349,4 +348,5 @@ if __name__ == "__main__":
         if not flow(arguments, config):
             sys.exit(1)
 
-    sys.exit(0)
+if __name__ == "__main__":
+    main()

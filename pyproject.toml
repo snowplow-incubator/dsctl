@@ -1,0 +1,43 @@
+[project]
+name = "snowplow-dsctl"
+version = "0.0.1"
+description = "Data Structures Control, or dsctl, is a client to the Snowplow BDP Data Structures API."
+requires-python = ">=3.7"
+readme = {file = "README.md", content-type = "text/markdown"}
+keywords = ["snowplow", "iglu", "jsonschema"]
+authors = [
+  {name = "Snowplow Analytics"}
+]
+maintainers = [
+  {name = "Costas Kotsokalis", email = "costas@snowplowanalytics.com"}
+]
+urls = {Repository = "https://github.com/snowplow-incubator/dsctl"}
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: File Formats :: JSON :: JSON Schema",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "requests==2.27.1",
+  "python-dotenv==0.20.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==7.1.1",
+  "pytest-mock==3.7.0",
+  "responses==0.20.0",
+]
+
+[project.scripts]
+dsctl = "dsctl:main"
+
+[tool.setuptools]
+py-modules = ["dsctl"]

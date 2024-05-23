@@ -19,7 +19,7 @@ from os.path import join, dirname
 import logging
 import sys
 import argparse
-from typing import Dict, Literal, Optional, TextIO
+from typing import Dict, Literal, Optional, TextIO, cast
 
 from dotenv import load_dotenv
 from requests import get, post, RequestException, Response
@@ -65,7 +65,7 @@ class Version:
     revision: int
     addition: int
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.model}-{self.revision}-{self.addition}"
 
 
@@ -88,7 +88,7 @@ def get_config() -> Optional[Config]:
         api_key = os.environ['CONSOLE_API_KEY']
     except KeyError:
         logger.error("Environment variables CONSOLE_ORGANIZATION_ID and/or CONSOLE_API_KEY are not set")
-        return
+        return None
 
     host = os.environ.get('CONSOLE_HOST', 'console')
     base_url = f"https://{host}.snowplowanalytics.com/api/msc/v1/organizations/{org_id}"
@@ -116,13 +116,18 @@ def get_token(config: Config) -> Optional[str]:
             headers={"X-API-Key": config.api_key}
         )
         body = response.json()
-        return body["accessToken"]
+        if not isinstance(body, dict):
+            raise TypeError()
+        return cast(str, body["accessToken"])
     except RequestException as e:
         logger.error(f"Could not contact BDP Console: {e}")
+        return None
     except JSONDecodeError:
         logger.error(f"get_token: Response was not valid JSON: {response and response.text}")
-    except KeyError:
+        return None
+    except (KeyError, TypeError):
         logger.error(f"get_token: Invalid response body: {dumps(body, indent=2)}")
+        return None
 
 
 def get_base_headers(auth_token: str) -> Dict[str, str]:
@@ -192,10 +197,10 @@ def validate(config: Config, data_structure: dict, auth_token: str, stype: str, 
 def promote(
     config: Config,
     deployment: Deployment,
-    auth_token,
+    auth_token: str,
     deployment_message: str,
-    to_production=False,
-    request_patch=False,
+    to_production: bool = False,
+    request_patch: bool = False,
 ) -> bool:
     """
     Promotes a data structure to staging or production.
@@ -256,8 +261,10 @@ def resolve(data_structure: dict | None, includes_meta: bool) -> Optional[Deploy
         return Deployment(ds, v)
     except (ValueError, TypeError):
         logger.error("Data structure spec is incorrect: Vendor, name, format or version is invalid")
+        return None
     except KeyError:
         logger.error("Data structure does not include a correct 'self' element")
+        return None
 
 
 def parse_arguments() -> CLIArguments:
@@ -302,8 +309,10 @@ def parse_input_file(file: TextIO) -> Optional[dict]:
         return load(file)
     except JSONDecodeError as e:
         logger.error(f"Provided input is not valid JSON: {e}")
+        return None
     except Exception as e:
         logger.error(f"Could not read {file.name if file.name else 'stdin'}: {e}")
+        return None
     finally:
         file.close()
 
@@ -332,7 +341,8 @@ def flow(args: CLIArguments, config: Config) -> bool:
     else:
         return validate(config, schema, token, schema_type, args.includes_meta)
 
-def main():
+
+def main() -> None:
     arguments = parse_arguments()
     config = get_config()
 
@@ -347,6 +357,7 @@ def main():
     else:
         if not flow(arguments, config):
             sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

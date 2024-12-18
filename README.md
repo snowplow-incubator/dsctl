@@ -1,3 +1,7 @@
+# Deprecated in favor of https://github.com/snowplow-product/snowplow-cli
+
+---
+
 # Data Structures Control
 
 _Data Structures Control_, or `dsctl` for short, is a client to the 
